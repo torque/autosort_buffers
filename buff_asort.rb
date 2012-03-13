@@ -1,72 +1,153 @@
 # No restrictions. Copy at will. Claim you wrote it. I don't care. #
+
+# Basic data structure
+# $irc = {server1 => [chan1,chan2,chan3], server2 => [chan1,chan2,pm1,pm2]} (server_name.short_name name should be unique)
+# $plugins = [name1,name2,name3] (plugin_name.short_name should be unique)
+
 SCRIPT_NAME = 'buff_asort'
 SCRIPT_AUTHOR = 'torque'
 SCRIPT_DESC = 'Automatic, case insensitive buffer sort by network.'
-SCRIPT_VERSION = '1'
+SCRIPT_VERSION = 'derp'
 SCRIPT_LICENSE = 'Anything.'
 
 def weechat_init
   Weechat.register(SCRIPT_NAME, SCRIPT_AUTHOR, SCRIPT_VERSION, SCRIPT_LICENSE, SCRIPT_DESC, "", "")
-  sort_cur_buffers() # sort on script load. Not sure how useful this is, though.
-  Weechat.hook_signal("buffer_opened", "add_new_buf", "")
+  Weechat.hook_signal("buffer_opened", "add_new_buf", "") # this hook occurs before the buffer is passed to its respective plugin for initialization of variables.
+  Weechat.hook_signal("irc_server_opened", "add_new_serv", "")
+  Weechat.hook_signal("irc_channel_opened", "add_new_chan", "") # todo: allow queries to open in the background
+  Weechat.hook_signal("irc_pv_opened", "add_new_chan", "") # no reason for these to be handled differently
+  #Weechat.hook_signal("buffer_renamed", "move_buffer", "") # todo: actually make it handle renamed buffers (this hook overlaps with opened, and all three irc
+  Weechat.hook_signal("buffer_closed","rebuild","") # todo: change this to buffer_closing and remove the buffer in question instead of regenerating the whole thing
+  Weechat.hook_command("buff_sort","Sort buffers case insensitively.","","","","reorganize_all_buffers","")
+  Weechat.hook_command("buff_debug","print shit.","","","","print_shit","")
+  reorganize_all_buffers("","","") # sort on script load. Not sure how useful this is, though.
   return Weechat::WEECHAT_RC_OK
 end
 
-def sort_and_stuff(names)
-  names.each do |name|
-    $buffers.each do |key,val|
-      #Weechat.print("","server.#{name[0,key.length-7]} == #{key}")
-      if "server.#{name[0,key.length-7]}" == key then # not sure this check is necessary: name[0,n.length-name[1].length-1] should resolve to a known key... but we can't use short name because buffer_get_string doesn't work right.
-        $buffers[key] << name
-        $buffers[key].sort! {|a,b| a.downcase <=> b.downcase} # problem with this: two identical strings will not change position, so ["A","a"] and ["a","A"] will be sorted differently. Not sure this matters.
-      end
-    end
-  end
-  newbarray = $buffers.sort_by {|k,v| k.downcase} # sort it
-  return newbarray.flatten
+def print_shit(a,b,c)
+  Weechat.print("","irc: #{$irc.to_s}")
+  Weechat.print("","plugns: #{$plugins.to_s}")
 end
 
-def move_buffers(order_a)
-  #Weechat.print("",order_a.to_s)
-  order_a.each_with_index do |buf,i|
+def getnumber(item, term)
+  return item.flatten.index(term)
+end
+
+def irclen # this is p pointless
+  return $irc.flatten(2).length
+end
+
+def sort_chans(server)
+  $irc[server].sort! {|a,b| a.downcase <=> b.downcase }
+end
+
+def sort_servers
+  herp = $irc.sort_by {|k,v| k.downcase } # converts top level to array
+  $irc = {}
+  (0..herp.length-1).each {|i| $irc[herp[i][0]] = herp[i][1]} # rebuild organized hash
+end
+
+def sort_plugin_buffs
+  $plugins.sort! {|a,b| a.downcase <=> b.downcase }
+end
+
+def add_new_buf(data, signal, buff_p)
+  if Weechat.buffer_get_string(buff_p,"full_name").match(/^irc\./)
+    #Weechat.print("","irc-related channel")
+    return Weechat::WEECHAT_RC_OK
+  else
+    longname = Weechat.buffer_get_string(buff_p,"name")
+    $plugins << longname
+    sort_plugin_buffs()
+    bufn = getnumber($plugins,longname) + irclen + 2
+    #Weechat.print("","#{bufn}")
+    Weechat.command("","/buffer #{longname}")
+    Weechat.command("","/buffer move #{bufn}")
+    return Weechat::WEECHAT_RC_OK
+  end
+end
+
+def add_new_serv(data, signal, buff_p)
+  server = Weechat.buffer_get_string(buff_p,"name")
+  $irc[server] = [] # shouldn't need to check that 
+  #Weechat.print("","before: #{$irc.to_s}")
+  sort_servers()
+  #Weechat.print("","after: #{$irc.to_s}")
+  bufn = getnumber($irc.flatten,server) + 2
+  #Weechat.print("","bufn: #{bufn}")
+  Weechat.command("","/buffer #{server}")
+  Weechat.command("","/buffer move #{bufn}")
+  return Weechat::WEECHAT_RC_OK
+end
+
+def add_new_chan(data, signal, buff_p) # plugin will /always/ be irc
+  longname = Weechat.buffer_get_string(buff_p,"name") #
+  #Weechat.print("","chan_name: #{longname}")
+  server = "server." + longname[0,longname.length - Weechat.buffer_get_string(buff_p,"short_name").length - 1]
+  #Weechat.print("","chan_server: #{server}")
+  $irc[server] << longname # keep it unique.
+  #Weechat.print("","before: #{$irc.to_s}")
+  sort_chans(server)
+  #Weechat.print("","after: #{$irc.to_s}")
+  bufn = getnumber($irc.flatten,longname) + 2 # +2 to account for 0-index array and core being buffer 1
+  #Weechat.print("","bufn: #{bufn}")
+  Weechat.command("","/buffer #{longname}")
+  Weechat.command("","/buffer move #{bufn}")
+  return Weechat::WEECHAT_RC_OK
+end
+
+def reorganize_all_buffers(a,b,c)
+  curbuf = get_cur_buffers
+  i = 2
+  $irc.each_key {|k| sort_chans(k) }
+  sort_servers()
+  $irc.flatten(2).each do |buf| # () unnecessary
     Weechat.command("","/buffer #{buf}")
-    Weechat.command("","/buffer move #{i+2}")
+    Weechat.command("","/buffer move #{i}")
+    i += 1
   end
+  sort_plugin_buffs()
+  $plugins.each do |buf|
+    Weechat.command("","/buffer #{buf}")
+    Weechat.command("","/buffer move #{i}")
+    i += 1
+  end
+  Weechat.command("","/buffer core.weechat") # move to the core buffer
+  Weechat.command("","/buffer move 1") # move it to the first buffer
+  Weechat.command("","/buffer #{curbuf}") # return to original buffer
+  return Weechat::WEECHAT_RC_OK
 end
 
-def sort_cur_buffers
-  $buffers = {}
-  names = [] # initialize it early for scope reasons
+def rebuild(a,b,c)
+  get_cur_buffers
+  return Weechat::WEECHAT_RC_OK
+end
+
+def get_cur_buffers
+  $irc = {}
+  $plugins = [] # global variables are probably the most terrible way of handling this possible
   infolist = Weechat.infolist_get("buffer","","")
   if infolist then
     while Weechat.infolist_next(infolist) != 0 # 0 does not evaluate to false in ruby
-      name = Weechat.infolist_string(infolist,"name")
-      n = Weechat.infolist_string(infolist,"short_name")
-      if name == "weechat" #only the core should match this.
+      longname = Weechat.infolist_string(infolist,"name")
+      curbuf = longname if Weechat.infolist_integer(infolist,"current_buffer") == 1
+      if longname == "weechat" #only the core should match this.
         next
       end
-      if name.match(/^server\./) then
-        $buffers[name] = []
+      plugin = Weechat.infolist_string(infolist,"plugin_name")
+      if plugin == "irc"
+        if longname.match(/^server\./) # name.match(/^server\./) then
+          $irc[longname] = [] if not $irc[longname]
+        else
+          server = "server." + longname[0,longname.length - Weechat.infolist_string(infolist,"short_name").length - 1]
+          $irc[server] = [] if not $irc[server]
+          $irc[server] << longname
+        end
       else
-        names << name
+        $plugins << longname
       end
     end
   end
-  move_buffers(sort_and_stuff(names))
-  Weechat.command("","/buffer core.weechat") #move to the core buffer
-  Weechat.command("","/buffer move 1") # move it to the first buffer.
-  Weechat.command("","/buffer 1") # I don't think there's a way of determining which buffer you're on when you load the script. Always move to buffer 1
-end
-
-def add_new_buf(data, signal, buffer_p)
-  name = Weechat.buffer_get_string(buffer_p,"name") # and short_name doesn't work. Fabulous.
-  names = []
-  if name.match(/^server\./) and not $buffers[name] then # idk if it'd be possible to overwrite this anyway.
-    $buffers[name] = []
-  else
-    names << name
-  end # shouldn't need to worry about the new window being 
-  move_buffers(sort_and_stuff(names))
-  Weechat.command("","/buffer #{name}")
-  return Weechat::WEECHAT_RC_OK
+  Weechat.infolist_free(infolist)
+  return curbuf
 end
