@@ -1,3 +1,3 @@
-﻿Automatic, case-insensitive buffer sorting alphabetically by network. Intended to act similarly to the way KVIrc sorts its channels/queries. Best used with [buffers.pl](http://www.weechat.org/scripts/source/stable/buffers.pl.html/)—the visualization keeps buffer order from becoming confusing.
+﻿Automatic, case-insensitive buffer sorting alphabetically by network. Intended to act similarly to the way KVIrc sorts its channels/queries. Best used with [buffers.pl](http://www.weechat.org/scripts/source/stable/buffers.pl.html/)—the visualization keeps buffer order from becoming confusing. Also, setting `irc.look.server_buffer = independent` is recommended. Merged buffers aren't guaranteed to be handled gracefully.
 
-Currently very much untested. Buffers created by plugins other than irc may be moved unexpectedly.
+Requires Weechat 0.3.7.
