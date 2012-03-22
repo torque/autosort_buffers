@@ -16,17 +16,17 @@ def weechat_init
   Weechat.hook_signal("irc_server_opened", "add_new_serv", "")
   Weechat.hook_signal("irc_channel_opened", "add_new_chan", "")
   Weechat.hook_signal("irc_pv_opened", "add_new_chan", "") # no reason for these to be handled differently
-  #Weechat.hook_signal("buffer_renamed", "move_buffer", "") # todo: actually make it handle renamed buffers (this hook overlaps with opened, and all three irc
+  #Weechat.hook_signal("buffer_renamed", "move_buffer", "") # todo: actually make it handle renamed buffers (I wonder if this hook overlaps with buffer_opened and all three irc hooks)
   Weechat.hook_signal("buffer_closed","rebuild","") # todo: change this to buffer_closing and remove the buffer in question instead of regenerating the whole thing
   Weechat.hook_command("buff_sort","Sort buffers case insensitively.","","","","reorganize_all_buffers","")
   Weechat.hook_command("buff_debug","print shit.","","","","print_shit","")
-  reorganize_all_buffers("","",Weechat.current_buffer()) # sort on script load. Not sure how useful this is, though.
+  reorganize_all_buffers("",Weechat.current_buffer(),"") # sort on script load. Not sure how useful this is, though.
   return Weechat::WEECHAT_RC_OK
 end
 
 def print_shit(a,b,c)
   Weechat.print("","irc: #{$irc.to_s}")
-  Weechat.print("","plugns: #{$plugins.to_s}")
+  Weechat.print("","plugins: #{$plugins.to_s}")
 end
 
 def getnumber(item, term)
@@ -88,8 +88,7 @@ def add_new_chan(data, signal, buff_p) # plugin will /always/ be irc
   return Weechat::WEECHAT_RC_OK
 end
 
-def reorganize_all_buffers(data,signal,buff_p)
-  curbuf = get_cur_buffers
+def reorganize_all_buffers(data, buff_p, signal)
   obuf = Weechat.buffer_get_string(buff_p,"name")
   i = 2
   $irc.each_key {|k| sort_chans(k) }
@@ -111,7 +110,7 @@ def reorganize_all_buffers(data,signal,buff_p)
   return Weechat::WEECHAT_RC_OK
 end
 
-def rebuild(data, signal, buff_p)
+def rebuild(data, buff_p, signal)
   get_cur_buffers
   return Weechat::WEECHAT_RC_OK
 end
