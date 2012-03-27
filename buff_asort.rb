@@ -90,6 +90,7 @@ end
 
 def reorganize_all_buffers(data, buff_p, signal)
   obuf = Weechat.buffer_get_string(buff_p,"name")
+  get_cur_buffers
   i = 2
   $irc.each_key {|k| sort_chans(k) }
   sort_servers()
